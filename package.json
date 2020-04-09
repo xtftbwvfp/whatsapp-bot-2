@@ -1,0 +1,24 @@
+{
+  "name": "evercam-bot",
+  "version": "0.0.1",
+  "description": "Evercam WhatsApp integration",
+  "main": "src/index.js",
+  "author": "Javier Calero",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node src/index.js"
+  },
+  "dependencies": {
+    "cli-progress": "^3.6.1",
+    "dotenv": "^8.2.0",
+    "mel-spintax": "^1.0.4",
+    "node-fetch": "^2.6.0",
+    "ora": "^4.0.3",
+    "puppeteer-core": "^2.1.1",
+    "qrcode-terminal": "^0.12.0",
+    "yargs": "^15.3.1"
+  },
+  "devDependencies": {
+    "eslint": "^6.8.0"
+  }
+}
