@@ -9,9 +9,52 @@ var argv = require('yargs').argv;
 var rev = require("./detectRev");
 var constants = require("./constants");
 require('dotenv').config()
+const { createLogger, transports ,format} = require('winston');
+const { combine, timestamp, json, simple } = format;
+const express = require('express');
+const app = express()
+const port = 3000
+var bodyParser = require('body-parser');
+
+const logger = createLogger({
+  level: 'info',
+  format: combine(
+    json(),
+    timestamp()
+  ),
+  transports: [
+    new transports.File({ filename: 'error.log', level: 'error' }),
+    new transports.File({ filename: 'activity.log' })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new transports.Console({
+    format: simple()
+  }));
+}
+
+app.listen(port, () => console.log(`Example app listening at http://localhost:${port}`))
+app.use(bodyParser.urlencoded({extended : true}));
+app.use(bodyParser.json());
+
+app.get('/', function(request, response) {
+	response.sendFile(path.join(__dirname + '/login.html'));
+});
+
+app.post("/auth", function(req, res, next) {
+  var id = req.body.u;
+  var pw = req.body.p;
+  if(id == "evercam" && pw == process.env.LOG_PASSWORD) {
+    res.sendFile(path.join(__dirname + '/../activity.log'))
+  }
+  else {
+    logger.log("error", "Invalid credentials")
+  }
+});
 
 async function Main() {
-
+  
     try {
         var page;
         await downloadAndStartThings();
@@ -33,11 +76,9 @@ async function Main() {
     }
 
     async function downloadAndStartThings() {
-        let botjson = {
-            evercam_url: process.env.EVERCAM_URL,
-            token: process.env.WHATSAPP_TOKEN,
-            isGroupReply: process.env.IS_GROUP_REPLY
-        }
+        var botjson = await utils.externalInjection("bot.json");
+        botjson["evercam_url"] =  process.env.EVERCAM_URL
+        botjson["token"] = process.env.WHATSAPP_TOKEN
         spinner.start("Downloading chrome\n");
         const browserFetcher = puppeteer.createBrowserFetcher({
             path: process.cwd()
@@ -60,7 +101,7 @@ async function Main() {
         extraArguments.userDataDir = constants.DEFAULT_DATA_DIR;
         const browser = await puppeteer.launch({
             executablePath: revisionInfo.executablePath,
-            headless: true,
+            headless: botjson.appconfig.headless,
             userDataDir: path.join(process.cwd(), "ChromeSession"),
             devtools: false,
             args: [...constants.DEFAULT_CHROMIUM_ARGS, ...pptrArgv], ...extraArguments
@@ -85,7 +126,7 @@ async function Main() {
             page.evaluate("var intents = " + JSON.stringify(botjson));
             spinner.stop("Opening Whatsapp ... done!");
             page.exposeFunction("log", (message) => {
-                console.log(message);
+                logger.log("info", message)
             })
             page.exposeFunction("getFile", utils.getFileInBase64);
             page.exposeFunction("resolveSpintax", spintax.unspin);

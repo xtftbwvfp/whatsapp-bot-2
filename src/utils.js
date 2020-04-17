@@ -20,7 +20,7 @@ this.externalInjection = function (filename) {
         var filepath = path.join(process.cwd(), filename);
         fs.readFile(filepath, 'utf8', (err, data) => {
             if (err) return reject(err);
-            resolve(data);
+            resolve(JSON.parse(data));
         });
     });
 }
