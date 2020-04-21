@@ -79,6 +79,7 @@ async function Main() {
         var botjson = await utils.externalInjection("bot.json");
         botjson["evercam_url"] =  process.env.EVERCAM_URL
         botjson["token"] = process.env.WHATSAPP_TOKEN
+        botjson["phone_number"] = process.env.PHONE_NUMBER
         spinner.start("Downloading chrome\n");
         const browserFetcher = puppeteer.createBrowserFetcher({
             path: process.cwd()

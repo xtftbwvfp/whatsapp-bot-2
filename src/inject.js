@@ -1,31 +1,40 @@
 WAPI.waitNewMessages(false, async (data) => {
   for (let i = 0; i < data.length; i++) {
     let message = data[i];
-    let credentials
     let body = {};
     body.text = message.body;
     body.type = 'message';
     body.user = message.from._serialized;
 
-    let authorized = await fetch(intents.evercam_url + "/users/whatsapp/%2B" + body.user.split("@")[0] + "/credentials?token=" + intents.token, {method: "get"})
+    window.log(`Message from ${message.from.user} checking...`);
+    if (message.type == "chat") {
+      if (message.isGroupMsg == true && intents.appconfig.isGroupReply == false) {
+        window.log("Message received in group and group reply is off. so will not take any actions.");
+        var PartialMatch = message.body.toLowerCase().search(`@${intents.phone_number}`);
+        if (PartialMatch == 0) {
+          response = "Replying to a group"
+          WAPI.sendSeen(message.from._serialized);
+          WAPI.sendMessage2(message.from._serialized, response);
+          return;
+        } else {
+          return;
+        }
+      }
+
+      let credentials = await fetch(intents.evercam_url + "/users/whatsapp/%2B" + body.user.split("@")[0] + "/credentials?token=" + intents.token, {method: "get"})
       .then((resp) => resp.json()).then(function (response) {
-        credentials = response
-        return true
+        if (response.api_id && response.api_key) {
+          return response
+        } else {
+          return false
+        }
       }).catch(() => {
         return false
       });
 
-    window.log(`Message from ${message.from.user} checking...`);
-    if (message.type == "chat") {
-      if (message.isGroupMsg == true && intents.isGroupReply == false) {
-        window.log("Message received in group and group reply is off. so will not take any actions.");
-        return;
-      }
-      if (!authorized) {
+      if (!credentials) {
         window.log("Contact not found: " + message.from.user);
         response = intents.unAuthorized
-        console.log(response);
-        
         WAPI.sendSeen(message.from._serialized);
         WAPI.sendMessage2(message.from._serialized, response);
       } else {
@@ -126,8 +135,8 @@ WAPI.waitNewMessages(false, async (data) => {
                   window.log("Sending error getting live view image of camera '" + camera.name + ": " + error.message);
                 });
               }).catch(() => {
-                window.log("Contact not found: " + message.from.user);
-                response = intents.unAuthorized
+                window.log("Camera not found: " + message.from.user);
+                response = "Camera not found"
                 WAPI.sendSeen(message.from._serialized);
                 WAPI.sendMessage2(message.from._serialized, response);
               });
