@@ -15,6 +15,31 @@ const express = require('express');
 const app = express()
 const port = 3000
 var bodyParser = require('body-parser');
+var mongoose = require('mongoose');
+
+mongoose.connect('mongodb://localhost/evercam', {useNewUrlParser: true});
+//Get the default connection
+var db = mongoose.connection;
+
+//Bind connection to error event (to get notification of connection errors)
+const models = {};
+db.on('error', console.error.bind(console, 'MongoDB connection error:'));
+db.once('open', function() {
+  const Schema = mongoose.Schema;
+  var messagesSchema = new Schema({
+    message: String,
+    user: String,
+    date: Date,
+    type: String
+  });
+  var usersSchema = new Schema({
+    phone: String,
+    created: { type: Date, default: Date.now }
+  });
+  // Compile model from schema
+  models.Messages = mongoose.model('messages', messagesSchema );
+  models.Users = mongoose.model('users', usersSchema );
+});
 
 const logger = createLogger({
   level: 'info',
@@ -42,7 +67,7 @@ app.get('/', function(request, response) {
 	response.sendFile(path.join(__dirname + '/login.html'));
 });
 
-app.post("/auth", function(req, res, next) {
+app.post("/auth", function(req, res) {
   var id = req.body.u;
   var pw = req.body.p;
   if(id == "evercam" && pw == process.env.LOG_PASSWORD) {
@@ -127,8 +152,18 @@ async function Main() {
             page.evaluate("var intents = " + JSON.stringify(botjson));
             spinner.stop("Opening Whatsapp ... done!");
             page.exposeFunction("log", (message) => {
-                logger.log("info", message)
+              logger.log("info", message)
             })
+            page.exposeFunction("newMessage", (message) => {
+              logger.log("info", message)
+              var newMessage = new models.Messages(message);
+              newMessage.save(function (err) {
+                if (err) return console.error(err);
+              });
+              models.Messages.find(function (err) {
+                if (err) return console.error(err);
+              })
+          })
             page.exposeFunction("getFile", utils.getFileInBase64);
             page.exposeFunction("resolveSpintax", spintax.unspin);
         }
