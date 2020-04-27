@@ -1,24 +1,21 @@
-const ora = require('ora');
-
-var step = {};
-var spinner;
+const ora = require("ora")
+var spinner
 
 this.start = function (text) {
-    spinner = ora({
-        spinner: "dots2",
-        text: text
-    }).start();
+  spinner = ora({
+    spinner: "dots2",
+    text: text,
+  }).start()
 }
 
 this.update = function (text) {
-    spinner.text = text;
+  spinner.text = text
 }
 
 this.info = function (text) {
-    spinner.info(text);
+  spinner.info(text)
 }
 
 this.stop = function (text) {
-    spinner.succeed(text);
+  spinner.succeed(text)
 }
-
