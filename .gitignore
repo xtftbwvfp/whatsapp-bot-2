@@ -1,5 +1,7 @@
 .env
+activity.log
+error.log
 node_modules/
-chromium-data
-linux-*
-*.log
+qr_code_session.png
+session.data.json
+src/evercam.js

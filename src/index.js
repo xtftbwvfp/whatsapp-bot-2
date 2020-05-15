@@ -1,23 +1,65 @@
-const puppeteer = require("puppeteer-core")
-const _cliProgress = require("cli-progress")
-const spintax = require("mel-spintax")
-var spinner = require("./step")
-var utils = require("./utils")
-var qrcode = require("qrcode-terminal")
-var path = require("path")
-var argv = require("yargs").argv
-var rev = require("./detectRev")
-var constants = require("./constants")
+// import { create, Whatsapp } from "@open-wa/wa-automate"
+const wa = require("@open-wa/wa-automate")
+const fetch = require("node-fetch")
+const ON_DEATH = require("death")
 require("dotenv").config()
 const { createLogger, transports, format } = require("winston")
-const { combine, timestamp, json, simple } = format
+const fs = require("fs")
+const mime = require("mime-types")
 const express = require("express")
+const bodyParser = require("body-parser")
+const mongoose = require("mongoose")
+const path = require("path")
+var evercam = require("./evercam")
+var utils = require("./utils")
+
+// const puppeteer = require("puppeteer-core")
+// const _cliProgress = require("cli-progress")
+// const spintax = require("mel-spintax")
+// var spinner = require("./step")
+// var utils = require("./utils")
+// var qrcode = require("qrcode-terminal")
+// var path = require("path")
+// var argv = require("yargs").argv
+// var rev = require("./detectRev")
+// var constants = require("./constants")
+
+const { combine, timestamp, json, simple } = format
 const app = express()
 const port = 3000
-var bodyParser = require("body-parser")
-var mongoose = require("mongoose")
+let globalClient
+let botjson = {}
 
-mongoose.connect("mongodb://localhost/evercam", { useNewUrlParser: true })
+ON_DEATH(async function (signal, err) {
+  console.log("killing session")
+  if (globalClient) await globalClient.kill()
+})
+
+wa.create("session", {
+  headless: false,
+  throwErrorOnTosBlock: true,
+  killTimer: 40,
+  autoRefresh: true,
+  qrRefreshS: 15,
+  cacheEnabled: false,
+}).then((client) => start(client))
+
+wa.ev.on("qr.**", async (qrcode, sessionId) => {
+  const imageBuffer = Buffer.from(
+    qrcode.replace("data:image/png;base64,", ""),
+    "base64"
+  )
+  fs.writeFileSync(
+    `qr_code${sessionId ? "_" + sessionId : ""}.png`,
+    imageBuffer
+  )
+})
+
+wa.ev.on("sessionData", async (sessionData, sessionId) => {
+  console.log(sessionId, sessionData)
+})
+
+mongoose.connect("mongodb://localhost/evercam", { useNewUrlParser: true, useUnifiedTopology: true })
 //Get the default connection
 var db = mongoose.connection
 
@@ -78,159 +120,312 @@ app.post("/auth", function (req, res) {
   }
 })
 
-async function Main() {
-  try {
-    var page
-    await downloadAndStartThings()
-    var isLogin = await checkLogin()
-    if (!isLogin) {
-      await getAndShowQR()
-    }
-    console.log("Evercam WhatsApp bot is ready.")
-  } catch (e) {
-    console.error("\nLooks like you got an error. " + e)
-    try {
-      page.screenshot({ path: path.join(process.cwd(), "error.png") })
-    } catch (s) {
-      console.error("Can't create shreenshot, X11 not running?. " + s)
-    }
-    console.warn(e)
-    console.error(
-      "Don't worry errors are good. They help us improve. A screenshot has already been saved as error.png in current directory. Please mail it on vasani.arpit@gmail.com along with the steps to reproduce it.\n"
-    )
-    throw e
-  }
+const stateChanged = (state) => {
+  console.log("state changed:", state)
+  if (state === "CONFLICT") globalClient.forceRefocus()
+}
+const anyMessage = (message) => console.log(message.type)
 
-  async function downloadAndStartThings() {
-    var botjson = await utils.externalInjection("bot.json")
-    botjson["evercam_url"] = process.env.EVERCAM_URL
-    botjson["token"] = process.env.WHATSAPP_TOKEN
-    botjson["phone_number"] = process.env.PHONE_NUMBER
-    spinner.start("Downloading chrome\n")
-    const browserFetcher = puppeteer.createBrowserFetcher({
-      path: process.cwd(),
-    })
-    const progressBar = new _cliProgress.Bar(
-      {},
-      _cliProgress.Presets.shades_grey
-    )
-    progressBar.start(100, 0)
-    var revNumber = await rev.getRevNumber()
-    const revisionInfo = await browserFetcher.download(
-      revNumber,
-      (download, total) => {
-        var percentage = (download * 100) / total
-        progressBar.update(percentage)
-      }
-    )
-    progressBar.update(100)
-    spinner.stop("Downloading chrome ... done!")
-    spinner.start("Launching Chrome")
-    var pptrArgv = []
-    if (argv.proxyURI) {
-      pptrArgv.push("--proxy-server=" + argv.proxyURI)
-    }
-    const extraArguments = Object.assign({})
-    extraArguments.userDataDir = constants.DEFAULT_DATA_DIR
-    const browser = await puppeteer.launch({
-      executablePath: revisionInfo.executablePath,
-      headless: botjson.appconfig.headless,
-      userDataDir: path.join(process.cwd(), "ChromeSession"),
-      devtools: false,
-      args: [...constants.DEFAULT_CHROMIUM_ARGS, ...pptrArgv],
-      ...extraArguments,
-    })
-    spinner.stop("Launching Chrome ... done!")
-    if (argv.proxyURI) {
-      spinner.info("Using a Proxy Server")
-    }
-    spinner.start("Opening Whatsapp")
-    page = await browser.pages()
-    if (page.length > 0) {
-      page = page[0]
-      page.setBypassCSP(true)
-      if (argv.proxyURI) {
-        await page.authenticate({
-          username: argv.username,
-          password: argv.password,
-        })
-      }
-      page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36"
-      )
-      await page.goto("https://web.whatsapp.com", {
-        waitUntil: "networkidle0",
-        timeout: 0,
-      })
-      page.evaluate("var intents = " + JSON.stringify(botjson))
-      spinner.stop("Opening Whatsapp ... done!")
-      page.exposeFunction("log", (message) => {
-        logger.log("info", message)
-      })
-      page.exposeFunction("newMessage", (message) => {
-        logger.log("info", message)
-        var newMessage = new models.Messages(message)
-        newMessage.save(function (err) {
-          if (err) return console.error(err)
-        })
-        models.Messages.find(function (err) {
-          if (err) return console.error(err)
-        })
-      })
-      page.exposeFunction("getFile", utils.getFileInBase64)
-      page.exposeFunction("resolveSpintax", spintax.unspin)
-    }
-  }
-
-  async function injectScripts(page) {
-    return await page
-      .waitForSelector("[data-icon=laptop]")
-      .then(async () => {
-        var filepath = path.join(__dirname, "WAPI.js")
-        await page.addScriptTag({ path: require.resolve(filepath) })
-        filepath = path.join(__dirname, "inject.js")
-        await page.addScriptTag({ path: require.resolve(filepath) })
-        return true
-      })
-      .catch(() => {
-        console.log("User is not logged in. Waited 30 seconds.")
-        return false
-      })
-  }
-
-  async function checkLogin() {
-    spinner.start("Page is loading")
-    await utils.delay(10000)
-    var output = await page.evaluate("localStorage['last-wid']")
-    if (output) {
-      spinner.stop("Looks like you are already logged in")
-      await injectScripts(page)
-    } else {
-      spinner.info("You are not logged in. Please scan the QR below")
-    }
-    return output
-  }
-
-  async function getAndShowQR() {
-    var scanme = "img[alt='Scan me!'], canvas"
-    await page.waitForSelector(scanme)
-    var imageData = await page.evaluate(
-      `document.querySelector("${scanme}").parentElement.getAttribute("data-ref")`
-    )
-    //console.log(imageData);
-    qrcode.generate(imageData, { small: true })
-    spinner.start(
-      "Waiting for scan \nKeep in mind that it will expire after few seconds"
-    )
-    var isLoggedIn = await injectScripts(page)
-    while (!isLoggedIn) {
-      await utils.delay(300)
-      isLoggedIn = await injectScripts(page)
-    }
-    if (isLoggedIn) {
-      spinner.stop("Looks like you are logged in now")
-    }
-  }
+async function start(client) {
+  globalClient = client
+  client.onStateChanged(stateChanged)
+  client.onAnyMessage(anyMessage)
+  client.onMessage(onMessage)
+  botjson = await utils.externalInjection("bot.json")
+  botjson["evercam_url"] = process.env.EVERCAM_URL
+  botjson["token"] = process.env.WHATSAPP_TOKEN
+  botjson["phone_number"] = process.env.PHONE_NUMBER
 }
 
-Main()
+// const toDataURL = (url) =>
+//   fetch(url)
+//     .then((response) => response.blob())
+//     .then(
+//       (blob) =>
+//         new Promise((resolve, reject) => {
+//           const reader = new FileReader()
+//           reader.onloadend = () => resolve(reader.result)
+//           reader.onerror = reject
+//           reader.readAsDataURL(blob)
+//         })
+//     )
+
+const toDataURL = (url) =>
+  fetch(url)
+    .then((r) => r.buffer())
+    .then(
+      (buf) =>
+        new Promise((resolve) => {
+          resolve("data:image/png;base64," + buf.toString("base64"))
+        })
+    )
+
+const onMessage = async (message) => {
+  try {
+    let cameras = {}
+    let body = {}
+    body.text = message.body
+    body.type = "message"
+    body.user = message.from
+    body.telephone = message.author
+      ? message.author.split("@")[0]
+      : message.from.split("@")[0]
+
+    // window.newMessage({
+    //   user: message.from.user,
+    //   server: message.from.server,
+    //   message: body.text,
+    //   date: Date.now(message.timestamp),
+    //   type: "inbound",
+    // })
+
+    // window.log(`Message from ${message.from.user} checking...`)
+    if (message.isGroupMsg == true && botjson.appconfig.isGroupReply == false) {
+      // window.log(
+      //   "Message received in group and group reply is off. so will not take any actions."
+      // )
+      var PartialMatch = body.text
+        .toLowerCase()
+        .search(`@${botjson.phone_number}`)
+      if (PartialMatch >= 0) {
+        body.text = message.body.replace(`@${botjson.phone_number}`, " ").trim()
+      } else {
+        return
+      }
+    }
+
+    let credentials = await evercam.getCredentials(body.telephone)
+
+    if (!credentials) {
+      // window.log("Contact not found: " + message.from.user)
+      response = botjson.unAuthorized
+      // globalClient.sendSeen(body.user)
+      globalClient.sendText(body.user, response)
+      // window.newMessage({
+      //   user: message.from.user,
+      //   server: message.from.server,
+      //   message: response,
+      //   date: Date.now(),
+      //   type: "reply",
+      // })
+    } else {
+      var exactMatch = botjson.bot.find((obj) =>
+        obj.exact.find((ex) => ex == body.text.toLowerCase())
+      )
+      PartialMatch = botjson.bot.find((obj) =>
+        obj.contains.find((ex) => body.text.toLowerCase().search(ex) > -1)
+      )
+      var response = ""
+      if (exactMatch != undefined) {
+        response = exactMatch.response
+        // window.log(`Replying with ${response}`)
+        // globalClient.sendSeen(body.user)
+        globalClient.sendText(body.user, response)
+        // window.newMessage({
+        //   user: message.from.user,
+        //   server: message.from.server,
+        //   message: response,
+        //   date: Date.now(),
+        //   type: "reply",
+        // })
+        return
+      }
+      if (PartialMatch != undefined) {
+        response = PartialMatch.response
+        // window.log(`Replying with ${response}`)
+        // globalClient.sendSeen(body.user)
+        globalClient.sendText(body.user, response)
+        // window.newMessage({
+        //   user: message.from.user,
+        //   server: message.from.server,
+        //   message: response,
+        //   date: Date.now(),
+        //   type: "reply",
+        // })
+        return
+      }
+      switch (body.text.toLowerCase()) {
+        case "live":
+        case "a":
+          cameras = await evercam.camerasList(credentials)
+          cameras.cameras.forEach(async (element) => {
+            let url = element.is_online
+              ? botjson.evercam_url +
+                "/cameras/" +
+                element.id +
+                "/live/snapshot"
+              : element.thumbnail_url
+            url =
+              url +
+              "?api_id=" +
+              credentials.api_id +
+              "&api_key=" +
+              credentials.api_key
+            // toDataURL(
+            //   url +
+            //     "?api_id=" +
+            //     credentials.api_id +
+            //     "&api_key=" +
+            //     credentials.api_key
+            // )
+            let img = await fetch(url)
+              .then((r) => r.buffer())
+              .then((buf) => {
+                return "data:image/png;base64," + buf.toString("base64")
+              })
+            await globalClient.sendImage(
+              body.user,
+              img,
+              element.id + ".png",
+              element.name
+            )
+            // toDataURL(
+            //   url +
+            //     "?api_id=" +
+            //     credentials.api_id +
+            //     "&api_key=" +
+            //     credentials.api_key
+            // )
+            //   .then((dataUrl) => {
+            //     globalClient.sendImage(
+            //       body.user,
+            //       dataUrl,
+            //       element.id + ".png",
+            //       element.name
+            //     )
+            //     // window.newMessage({
+            //     //   user: message.from.user,
+            //     //   server: message.from.server,
+            //     //   message: element.id,
+            //     //   date: Date.now(),
+            //     //   type: "reply",
+            //     // })
+            //     // window.log(
+            //     //   "Sending live view image of camera '" +
+            //     //     element.name +
+            //     //     "' to '" +
+            //     //     message.from.user
+            //     // )
+            //   })
+            //   .catch((error) => {
+            //     globalClient.sendText(
+            //       body.user,
+            //       element.name + ": " + error.message
+            //     )
+            //     // window.newMessage({
+            //     //   user: message.from.user,
+            //     //   server: message.from.server,
+            //     //   message: element.name + ": " + error.message,
+            //     //   date: Date.now(),
+            //     //   type: "reply",
+            //     // })
+            //     // window.log(
+            //     //   "Sending error getting live view image of camera '" +
+            //     //     element.name +
+            //     //     ": " +
+            //     //     error.message
+            //     // )
+            //   })
+          })
+          break
+        case "b":
+          cameras = await evercam.camerasList(credentials)
+          response = "Select a camera by replying the associated number:\n"
+          cameras.cameras.forEach((element, index) => {
+            response += `\n *${index + 1}.* ${element.name}`
+          })
+          // window.log(`Replying with ${response}`)
+          globalClient.sendText(body.user, response)
+          // window.newMessage({
+          //   user: message.from.user,
+          //   server: message.from.server,
+          //   message: response,
+          //   date: Date.now(),
+          //   type: "reply",
+          // })
+          break
+        default:
+          if (isNaN(parseInt(body.text))) {
+            response = botjson.noMatch
+            // window.log(`Replying with ${response}`)
+            globalClient.sendText(body.user, response)
+            // window.newMessage({
+            //   user: message.from.user,
+            //   server: message.from.server,
+            //   message: response,
+            //   date: Date.now(),
+            //   type: "reply",
+            // })
+          } else {
+            cameras = await evercam.camerasList(credentials)
+            var camera = cameras.cameras[parseInt(body.text) - 1]
+            let url = camera.is_online
+              ? botjson.evercam_url + "/cameras/" + camera.id + "/live/snapshot"
+              : camera.thumbnail_url
+            url =
+              url +
+              "?api_id=" +
+              credentials.api_id +
+              "&api_key=" +
+              credentials.api_key
+            // toDataURL(
+            //   url +
+            //     "?api_id=" +
+            //     credentials.api_id +
+            //     "&api_key=" +
+            //     credentials.api_key
+            // )
+            let img = await fetch(url)
+              .then((r) => r.buffer())
+              .then((buf) => {
+                return "data:image/png;base64," + buf.toString("base64")
+              })
+            await globalClient
+              .sendImage(body.user, img, camera.id + ".png", camera.name)
+              // .then((dataUrl) => {
+              //   // globalClient.sendSeen(body.user)
+              //   globalClient.sendImage(
+              //     dataUrl,
+              //     body.user,
+              //     camera.id + ".png",
+              //     camera.name
+              //   )
+              //   // window.newMessage({
+              //   //   user: message.from.user,
+              //   //   server: message.from.server,
+              //   //   message: camera.id,
+              //   //   date: Date.now(),
+              //   //   type: "reply",
+              //   // })
+              //   // window.log(
+              //   //   "Sending live view image of camera '" +
+              //   //     camera.name +
+              //   //     "' to '" +
+              //   //     message.from.user
+              //   // )
+              // })
+              .catch((error) => {
+                // globalClient.sendSeen(body.user)
+                globalClient.sendText(body.user, camera.name + ": " + error.message)
+                // window.newMessage({
+                //   user: message.from.user,
+                //   server: message.from.server,
+                //   message: camera.name + ": " + error.message,
+                //   date: Date.now(),
+                //   type: "reply",
+                // })
+                // window.log(
+                //   "Sending error getting live view image of camera '" +
+                //     camera.name +
+                //     ": " +
+                //     error.message
+                // )
+              })
+          }
+          break
+      }
+    }
+  } catch (error) {
+    console.log("TCL: start -> error", error)
+  }
+}
