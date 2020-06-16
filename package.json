@@ -6,7 +6,7 @@
   "author": "javict <6javierct93@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "dev": "nodemon main --ignore *.data.json",
+    "dev": "nodemon main --ignore *.data.json"
   },
   "private": true,
   "devDependencies": {
