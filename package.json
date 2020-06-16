@@ -7,7 +7,6 @@
   "license": "MIT",
   "scripts": {
     "dev": "nodemon main --ignore *.data.json",
-    "prod": "pm2 start src/index.js"
   },
   "private": true,
   "devDependencies": {
@@ -30,5 +29,8 @@
     "rimraf": "^3.0.2",
     "sequelize": "^5.21.11",
     "winston": "^3.2.1"
+  },
+  "engines": {
+    "node": "12.16.2"
   }
 }
