@@ -1,8 +1,7 @@
 {
-  "type": "module",
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "main": "src/index.js",
+  "main": "app.js",
   "repository": "https://github.com/evercam/whatsapp-bot.git",
   "author": "javict <6javierct93@gmail.com>",
   "license": "MIT",
@@ -18,14 +17,18 @@
     "prettier": "^2.0.5"
   },
   "dependencies": {
-    "@open-wa/wa-automate": "^1.9.20",
+    "@open-wa/wa-automate": "^1.9.67",
     "dotenv": "^8.2.0",
     "eslint": "^7.0.0",
     "express": "^4.17.1",
     "mongoose": "^5.9.12",
     "node-fetch": "^2.6.0",
     "nodemon": "^2.0.3",
+    "p-queue": "^6.4.0",
+    "pg": "^8.2.1",
+    "pg-hstore": "^2.3.3",
     "rimraf": "^3.0.2",
+    "sequelize": "^5.21.11",
     "winston": "^3.2.1"
   }
 }
