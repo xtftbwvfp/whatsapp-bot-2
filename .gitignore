@@ -2,6 +2,6 @@
 activity.log
 error.log
 node_modules/
-qr_code_session.png
-session.data.json
+qr_code*
+*.data.json
 src/evercam.js

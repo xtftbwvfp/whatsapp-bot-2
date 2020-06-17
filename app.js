@@ -3,6 +3,7 @@ const ON_DEATH = require("death")
 const wa = require("@open-wa/wa-automate")
 const fs = require("fs")
 const fetch = require("node-fetch")
+const { default: PQueue } = require("p-queue")
 
 var utils = require("./utils")
 const server = require("./server")
@@ -13,21 +14,40 @@ const PORT = process.env.PORT || 3000
 let globalClient
 let botjson = {}
 
+const queue = new PQueue({
+  concurrency: 4,
+  autoStart: false,
+})
+
 server.listen(PORT, () => console.log(`Server is live at localhost:${PORT}`))
 
 ON_DEATH(async function (signal, err) {
   console.log("killing session")
+  console.log(signal)
+  console.log(err.message)
   if (globalClient) await globalClient.kill()
 })
 
-wa.create("session", {
-  headless: process.env.NODE_ENV == "development" ? false : true,
+wa.create({
+  sessionId: "session1",
+  headless: process.env.NODE_ENV === "development" ? false : true,
   throwErrorOnTosBlock: true,
-  killTimer: 40,
+  useChrome: true,
+  restartOnCrash: start,
+  authTimeout: 40,
+  killProcessOnBrowserClose: true,
   autoRefresh: true,
   qrRefreshS: 15,
+  qrTimeout: 40,
   cacheEnabled: false,
-}).then((client) => start(client))
+  customUserAgent:
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Safari/605.1.15",
+})
+  .then(async (client) => await start(client))
+  .catch((e) => {
+    console.log("Error", e.message)
+    // process.exit();
+  })
 
 wa.ev.on("qr.**", async (qrcode, sessionId) => {
   const imageBuffer = Buffer.from(
@@ -46,14 +66,19 @@ wa.ev.on("sessionData", async (sessionData, sessionId) => {
 
 async function start(client) {
   globalClient = client
+  const unreadMessages = await client.getAllUnreadMessages()
+  unreadMessages.forEach(processMessage)
   client.onStateChanged(stateChanged)
   client.onAnyMessage(anyMessage)
-  client.onMessage(onMessage)
+  client.onMessage(processMessage)
   botjson = await utils.externalInjection("bot.json")
   botjson["evercam_url"] = process.env.EVERCAM_URL
   botjson["token"] = process.env.WHATSAPP_TOKEN
   botjson["phone_number"] = process.env.PHONE_NUMBER
+  queue.start()
 }
+
+const processMessage = (message) => queue.add(() => onMessage(message))
 
 const stateChanged = (state) => {
   console.log("state changed:", state)
@@ -84,8 +109,8 @@ const saveMessage = async (reply, params) => {
     let participants = await globalClient.getGroupMembers(params.user)
     participants.forEach(async (element) => {
       let user = await whatsappDB.users.getUserOrCreate({
-        user_chat_id: element.id._serialized,
-        phone_number: element.id.user,
+        user_chat_id: element.id,
+        phone_number: element.id.split("@")[0],
         first_name: null,
         last_name: null,
         email: null,
@@ -122,6 +147,10 @@ const onMessage = async (message) => {
       : message.from.split("@")[0]
     body.isGroupMsg = message.isGroupMsg
     body.groupReply = true
+
+    globalClient.sendSeen(body.user)
+    await globalClient.simulateTyping(body.user, true)
+
     if (body.isGroupMsg == true && botjson.appconfig.isGroupReply == false) {
       body.groupName = message.chat.formattedTitle
       var PartialMatch = body.text
@@ -145,7 +174,9 @@ const onMessage = async (message) => {
     } else if (!credentials) {
       response = botjson.unAuthorized
       saveMessage(true, body)
-      globalClient.sendText(body.user, response)
+      await globalClient
+        .sendText(body.user, response)
+        .then(async () => await globalClient.simulateTyping(body.user, false))
     } else {
       var exactMatch = botjson.bot.find((obj) =>
         obj.exact.find((ex) => ex == body.text.toLowerCase())
@@ -157,13 +188,17 @@ const onMessage = async (message) => {
       if (exactMatch != undefined) {
         body.text = exactMatch.response
         saveMessage(true, body)
-        globalClient.sendText(body.user, body.text)
+        await globalClient
+          .sendText(body.user, body.text)
+          .then(async () => await globalClient.simulateTyping(body.user, false))
         return
       }
       if (PartialMatch != undefined) {
         body.text = PartialMatch.response
         saveMessage(true, body)
-        globalClient.sendText(body.user, body.text)
+        await globalClient
+          .sendText(body.user, body.text)
+          .then(async () => await globalClient.simulateTyping(body.user, false))
         return
       }
       switch (body.text.toLowerCase()) {
@@ -200,6 +235,7 @@ const onMessage = async (message) => {
                 )
               })
           })
+          await globalClient.simulateTyping(body.user, false)
           break
         case "b":
           cameras = await evercam.camerasList(credentials)
@@ -208,13 +244,21 @@ const onMessage = async (message) => {
             body.text += `\n *${index + 1}.* ${camera.name}`
           })
           saveMessage(true, body)
-          globalClient.sendText(body.user, body.text)
+          await globalClient
+            .sendText(body.user, body.text)
+            .then(
+              async () => await globalClient.simulateTyping(body.user, false)
+            )
           break
         default:
           if (isNaN(parseInt(body.text))) {
             body.text = botjson.noMatch
             saveMessage(true, body)
-            globalClient.sendText(body.user, body.text)
+            await globalClient
+              .sendText(body.user, body.text)
+              .then(
+                async () => await globalClient.simulateTyping(body.user, false)
+              )
           } else {
             cameras = await evercam.camerasList(credentials)
             var camera = cameras.cameras[parseInt(body.text) - 1]
@@ -234,17 +278,20 @@ const onMessage = async (message) => {
               })
             await globalClient
               .sendImage(body.user, img, camera.id + ".png", camera.name)
-              .then(() => {
+              .then(async () => {
                 body.text = "live-" + camera.name
                 saveMessage(true, body)
+                await globalClient.simulateTyping(body.user, false)
               })
-              .catch((error) => {
+              .catch(async (error) => {
                 body.text = "live-error-" + camera.name
                 saveMessage(true, body)
-                globalClient.sendText(
-                  body.user,
-                  camera.name + ": " + error.message
-                )
+                await globalClient
+                  .sendText(body.user, camera.name + ": " + error.message)
+                  .then(
+                    async () =>
+                      await globalClient.simulateTyping(body.user, false)
+                  )
               })
           }
           break
