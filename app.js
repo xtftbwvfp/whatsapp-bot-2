@@ -70,6 +70,7 @@ async function start(client) {
   client.onStateChanged(stateChanged)
   client.onAnyMessage(anyMessage)
   client.onMessage(processMessage)
+  client.onBattery(batteryChanged)
   botjson = await utils.externalInjection("bot.json")
   botjson["evercam_url"] = process.env.EVERCAM_URL
   botjson["token"] = process.env.WHATSAPP_TOKEN
@@ -84,6 +85,13 @@ const stateChanged = (state) => {
   if (state === "CONFLICT") globalClient.forceRefocus()
 }
 const anyMessage = (message) => console.log(message.type)
+const batteryChanged = (battery) => {
+  if (battery == 20 || battery == 10 || battery == 5)
+    globalClient.sendText(
+      process.env.ADMIN_PHONE_NUMBER + "@c.us",
+      "BATTERY CHANGED: " + battery
+    )
+}
 
 const saveMessage = async (reply, params) => {
   let user, group, message
