@@ -4,6 +4,7 @@ const wa = require("@open-wa/wa-automate")
 const fs = require("fs")
 const fetch = require("node-fetch")
 const { default: PQueue } = require("p-queue")
+const wakeDyno = require("woke-dyno")
 
 var utils = require("./utils")
 const server = require("./server")
@@ -19,12 +20,15 @@ const queue = new PQueue({
   autoStart: false,
 })
 
-server.listen(PORT, () => console.log(`Server is live at localhost:${PORT}`))
+server.listen(PORT, () => {
+  wakeDyno(process.env.DYNO_URL).start()
+  console.log(`Server is live at localhost:${PORT}`)
+})
 
 ON_DEATH(async function (signal, err) {
   console.log("killing session")
   console.log(signal)
-  console.log(err.message)
+  console.log(err)
   if (globalClient) await globalClient.kill()
 })
 
@@ -39,8 +43,6 @@ wa.create({
   qrRefreshS: 15,
   qrTimeout: 40,
   cacheEnabled: false,
-  customUserAgent:
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Safari/605.1.15",
 })
   .then(async (client) => await start(client))
   .catch((e) => {
@@ -177,6 +179,7 @@ const onMessage = async (message) => {
     let messageDB = await saveMessage(false, body)
     body.parent_message = messageDB.id
     if (!body.groupReply) {
+      await globalClient.simulateTyping(body.user, false)
       return
     } else if (!credentials) {
       response = botjson.unAuthorized

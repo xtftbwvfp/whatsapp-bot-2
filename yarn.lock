@@ -4277,6 +4277,13 @@ wkx@^0.4.8:
   dependencies:
     "@types/node" "*"
 
+woke-dyno@^0.0.4:
+  version "0.0.4"
+  resolved "https://registry.yarnpkg.com/woke-dyno/-/woke-dyno-0.0.4.tgz#3e5306ab979cbf969c397471c94877d3c73f3946"
+  integrity sha512-KyXoNUau55C1bd7ySWUvHIEVo9PLSEfN0wA8Q2Kkys0H+xP8ODiYX76hYHmVokvWLOuDz/0oSdNm+Z/Mx1GJYA==
+  dependencies:
+    node-fetch "^2.6.0"
+
 word-wrap@^1.2.3:
   version "1.2.3"
   resolved "https://registry.yarnpkg.com/word-wrap/-/word-wrap-1.2.3.tgz#610636f6b1f703891bd34771ccb17fb93b47079c"

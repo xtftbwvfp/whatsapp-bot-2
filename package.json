@@ -29,7 +29,8 @@
     "rimraf": "^3.0.2",
     "sequelize": "^5.21.11",
     "sequelize-cli": "^5.5.1",
-    "winston": "^3.2.1"
+    "winston": "^3.2.1",
+    "woke-dyno": "^0.0.4"
   },
   "engines": {
     "node": "12.16.2"
