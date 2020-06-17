@@ -43,6 +43,8 @@ wa.create({
   qrRefreshS: 15,
   qrTimeout: 40,
   cacheEnabled: false,
+  customUserAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3882.0 Safari/537.36",
 })
   .then(async (client) => await start(client))
   .catch((e) => {
