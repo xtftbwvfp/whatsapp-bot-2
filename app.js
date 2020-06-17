@@ -32,7 +32,6 @@ wa.create({
   sessionId: "session1",
   headless: process.env.NODE_ENV === "development" ? false : true,
   throwErrorOnTosBlock: true,
-  useChrome: true,
   restartOnCrash: start,
   authTimeout: 40,
   killProcessOnBrowserClose: true,
