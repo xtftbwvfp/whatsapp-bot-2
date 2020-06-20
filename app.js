@@ -76,10 +76,14 @@ wa.ev.on("qr.**", async (qrcode, sessionId) => {
     qrcode.replace("data:image/png;base64,", ""),
     "base64"
   )
-  fs.writeFileSync(
-    `static/qr_code${sessionId ? "_" + sessionId : ""}.png`,
-    imageBuffer
-  )
+  fs.promises
+    .mkdir("./static", { recursive: true })
+    .then(() =>
+      fs.writeFileSync(
+        `static/qr_code${sessionId ? "_" + sessionId : ""}.png`,
+        imageBuffer
+      )
+    )
 })
 
 wa.ev.on("sessionData.**", async (sessionData, sessionId) => {
