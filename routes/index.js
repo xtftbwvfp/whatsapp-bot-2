@@ -10,7 +10,7 @@ router.post("/auth", function (req, res) {
   var id = req.body.u
   var pw = req.body.p
   if (id == "evercam" && pw == process.env.LOG_PASSWORD) {
-    res.sendFile(path.join(__dirname + "/../activity.log"))
+    res.sendFile(path.join(__dirname + "/../views/whatsapp.html"))
   }
 })
 

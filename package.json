@@ -6,7 +6,7 @@
   "author": "javict <6javierct93@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "dev": "nodemon main --ignore *.data.json"
+    "dev": "nodemon --ignore *.data.json --ignore static/ main"
   },
   "private": true,
   "devDependencies": {
@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@open-wa/wa-automate": "^1.9.67",
+    "aws-sdk": "^2.701.0",
+    "axios": "^0.19.2",
     "dotenv": "^8.2.0",
     "eslint": "^7.0.0",
     "express": "^4.17.1",
@@ -29,6 +31,7 @@
     "rimraf": "^3.0.2",
     "sequelize": "^5.21.11",
     "sequelize-cli": "^5.5.1",
+    "vue-axios": "^2.1.5",
     "winston": "^3.2.1",
     "woke-dyno": "^0.0.4"
   },

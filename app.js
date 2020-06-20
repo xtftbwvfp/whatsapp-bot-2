@@ -22,7 +22,6 @@ const queue = new PQueue({
 
 server.listen(PORT, () => {
   wakeDyno(process.env.DYNO_URL).start()
-  console.log(`Server is live at localhost:${PORT}`)
 })
 
 ON_DEATH(async function (signal, err) {
@@ -34,6 +33,7 @@ ON_DEATH(async function (signal, err) {
 
 wa.create({
   sessionId: "session1",
+  sessionDataPath: "static",
   headless: process.env.NODE_ENV === "development" ? false : true,
   throwErrorOnTosBlock: true,
   restartOnCrash: start,
@@ -57,13 +57,15 @@ wa.ev.on("qr.**", async (qrcode, sessionId) => {
     "base64"
   )
   fs.writeFileSync(
-    `qr_code${sessionId ? "_" + sessionId : ""}.png`,
+    `static/qr_code${sessionId ? "_" + sessionId : ""}.png`,
     imageBuffer
   )
 })
 
-wa.ev.on("sessionData", async (sessionData, sessionId) => {
-  console.log(sessionId, sessionData)
+wa.ev.on("sessionData.**", async (sessionData, sessionId) => {
+  console.log("\n----------")
+  console.log("sessionData", sessionId, sessionData)
+  console.log("----------")
 })
 
 async function start(client) {
