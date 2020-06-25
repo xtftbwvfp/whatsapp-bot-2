@@ -1,4 +1,5 @@
 const models = require("../models")
+const { Op } = require("sequelize")
 
 module.exports = {
   create(params) {
@@ -12,6 +13,34 @@ module.exports = {
           message_id: params.message,
         })
         .then((message_recipients) => resolve(message_recipients))
+        .catch((error) => reject(error))
+    })
+  },
+  getMessagesByChat(user_id, group_id) {
+    return new Promise((resolve, reject) => {
+      let user = user_id ? user_id : null
+      let group = group_id ? group_id : null
+      models.message_recipients
+        .findAll({
+          order: [["created_at", "ASC"]],
+          limit: 100,
+          where: {
+            [Op.and]: [{ recipient_id: user }, { recipient_group_id: group }],
+          },
+          include: [
+            {
+              model: models.messages,
+              as: "message",
+              include: [
+                {
+                  model: models.users,
+                  as: "user",
+                },
+              ],
+            },
+          ],
+        })
+        .then((messages) => resolve(messages))
         .catch((error) => reject(error))
     })
   },

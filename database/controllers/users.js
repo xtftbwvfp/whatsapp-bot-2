@@ -1,4 +1,5 @@
 const models = require("../models")
+const { Op } = require("sequelize")
 
 module.exports = {
   getUserOrCreate(params) {
@@ -28,5 +29,29 @@ module.exports = {
         .then((user) => resolve(user))
         .catch((error) => reject(error))
     })
+  },
+  getUser(user_chat_id) {
+    return new Promise((resolve, reject) => {
+      models.users
+        .findOne({
+          where: { user_chat_id: user_chat_id },
+        })
+        .then((user) => resolve(user))
+        .catch((error) => reject(error))
+    })
+  },
+  async getAllUsers() {
+    try {
+      const results = await models.users.findAll({
+        where: {
+          id: {
+            [Op.not]: 2,
+          },
+        },
+      })
+      return results
+    } catch (e) {
+      console.log("error creating group:", e)
+    }
   },
 }
