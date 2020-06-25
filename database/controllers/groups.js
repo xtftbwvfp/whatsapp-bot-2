@@ -15,4 +15,12 @@ module.exports = {
         .catch((error) => reject(error))
     })
   },
+  async getAllGroups() {
+    try {
+      const results = await models.groups.findAll()
+      return results
+    } catch (e) {
+      console.log("error creating group:", e)
+    }
+  },
 }
