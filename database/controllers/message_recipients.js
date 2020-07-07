@@ -22,8 +22,8 @@ module.exports = {
       let group = group_id ? group_id : null
       models.message_recipients
         .findAll({
-          order: [["created_at", "ASC"]],
-          limit: 100,
+          // FIXME: limit messages to return
+          order: [[models.sequelize.col("created_at"), "ASC"]],
           where: {
             [Op.and]: [{ recipient_id: user }, { recipient_group_id: group }],
           },

@@ -7,11 +7,7 @@ const routes = require("../routes")
 
 const server = express()
 server.use(express.json())
-server.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  })
-)
+server.use(cors())
 server.use(auth.authenticateToken)
 server.use(bodyParser.urlencoded({ extended: true }))
 server.use(bodyParser.json())
