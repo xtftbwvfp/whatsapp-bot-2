@@ -30,35 +30,55 @@ const batteryChanged = (battery) => {
 
 const saveMessage = async (params) => {
   let user, group, message
-  user = await whatsappDB.users.getUserOrCreate({
-    user_chat_id: params.user,
-    phone_number: params.telephone,
-    first_name: params.first_name,
-    last_name: params.last_name,
-    email: params.email,
-  })
+  user = await whatsappDB.users
+    .getUserOrCreate({
+      user_chat_id: params.user,
+      phone_number: params.telephone,
+      first_name: params.first_name,
+      last_name: params.last_name,
+      email: params.email,
+      private_chat: !params.isGroupMsg,
+      authenticated: params.authenticated,
+    })
+    .then(async ([user, created]) => {
+      if (!created && params.authenticated && !user.authenticated) {
+        return await whatsappDB.users.update({
+          user_chat_id: params.user,
+          phone_number: params.telephone,
+          first_name: params.first_name,
+          last_name: params.last_name,
+          email: params.email,
+          private_chat: !params.isGroupMsg,
+          authenticated: params.authenticated,
+        })
+      } else {
+        return user
+      }
+    })
   message = await whatsappDB.messages.create({
     message_body: params.text,
     parent_message_id: params.parent_message,
     creator: user.id,
+    type: params.type,
   })
   if (params.isGroupMsg == true) {
     group = await whatsappDB.groups.getGroupOrCreate({
       group_chat_id: params.user,
       name: params.groupName,
     })
-
     let participants = await globalClient.getGroupMembers(params.user)
     participants.forEach(async (element) => {
-      let user = await whatsappDB.users.getUserOrCreate({
+      let [participant, created] = await whatsappDB.users.getUserOrCreate({
         user_chat_id: element.id,
         phone_number: element.id.split("@")[0],
         first_name: null,
         last_name: null,
         email: null,
+        private_chat: false,
+        authenticated: false,
       })
       await whatsappDB.users_groups.getParciticipantOrcreate({
-        user_id: user.id,
+        user_id: participant.id,
         group_id: group.id,
       })
     })
@@ -84,6 +104,7 @@ const saveReply = async (params) => {
     message_body: params.text,
     parent_message_id: params.parent_message,
     creator: 2,
+    type: params.type,
   })
   if (params.isGroupMsg == true) {
     group = await whatsappDB.groups.getGroupOrCreate({
@@ -93,15 +114,17 @@ const saveReply = async (params) => {
 
     let participants = await globalClient.getGroupMembers(params.user)
     participants.forEach(async (element) => {
-      let user = await whatsappDB.users.getUserOrCreate({
+      let [participant, created] = await whatsappDB.users.getUserOrCreate({
         user_chat_id: element.id,
         phone_number: element.id.split("@")[0],
         first_name: null,
         last_name: null,
         email: null,
+        private_chat: false,
+        authenticated: false,
       })
       await whatsappDB.users_groups.getParciticipantOrcreate({
-        user_id: user.id,
+        user_id: participant.id,
         group_id: group.id,
       })
     })
@@ -127,6 +150,7 @@ const saveSentMessage = async (params) => {
     message_body: params.text,
     parent_message_id: null,
     creator: 2,
+    type: params.type,
   })
   if (params.isGroupMsg == true) {
     group = await whatsappDB.groups.getGroupOrCreate({
@@ -142,6 +166,8 @@ const saveSentMessage = async (params) => {
         first_name: null,
         last_name: null,
         email: null,
+        private_chat: false,
+        authenticated: false,
       })
       await whatsappDB.users_groups.getParciticipantOrcreate({
         user_id: user.id,
@@ -166,6 +192,7 @@ const onMessage = async (message) => {
   try {
     let cameras = {}
     let body = {}
+    let credentials = null
     body.text = message.body
     body.type = "message"
     body.user = message.from
@@ -174,6 +201,7 @@ const onMessage = async (message) => {
       : message.from.split("@")[0]
     body.isGroupMsg = message.isGroupMsg
     body.groupReply = true
+    body.type = message.type
 
     globalClient.sendSeen(body.user)
     await globalClient.simulateTyping(body.user, true)
@@ -185,15 +213,19 @@ const onMessage = async (message) => {
         .search(`@${botjson.phone_number}`)
       if (PartialMatch >= 0) {
         body.text = message.body.replace(`@${botjson.phone_number}`, " ").trim()
+        credentials = await evercam.getCredentials(body.telephone)
       } else {
         body.groupReply = false
       }
+    } else {
+      credentials = await evercam.getCredentials(body.telephone)
     }
-
-    let credentials = await evercam.getCredentials(body.telephone)
-    body.first_name = credentials.firstname
-    body.last_name = credentials.lastname
-    body.email = credentials.email
+    if (credentials) {
+      body.first_name = credentials.firstname
+      body.last_name = credentials.lastname
+      body.email = credentials.email
+      body.authenticated = true
+    }
     let dbResponse = await saveMessage(body)
     body.parent_message = dbResponse.message.id
     body.userId = dbResponse.user.user_chat_id
@@ -202,6 +234,7 @@ const onMessage = async (message) => {
       return
     } else if (!credentials) {
       response = botjson.unAuthorized
+      body.type = "chat"
       saveReply(body)
       await globalClient
         .sendText(body.user, response)
@@ -216,6 +249,7 @@ const onMessage = async (message) => {
       var response = ""
       if (exactMatch != undefined) {
         body.text = exactMatch.response
+        body.type = "chat"
         saveReply(body)
         await globalClient
           .sendText(body.user, body.text)
@@ -224,6 +258,7 @@ const onMessage = async (message) => {
       }
       if (PartialMatch != undefined) {
         body.text = PartialMatch.response
+        body.type = "chat"
         saveReply(body)
         await globalClient
           .sendText(body.user, body.text)
@@ -253,6 +288,7 @@ const onMessage = async (message) => {
               .sendImage(body.user, img, camera.id + ".png", camera.name)
               .then(() => {
                 body.text = "live-" + camera.name
+                body.type = "image"
                 saveReply(body)
               })
               .catch((error) => {
@@ -272,6 +308,7 @@ const onMessage = async (message) => {
           cameras.cameras.forEach((camera, index) => {
             body.text += `\n *${index + 1}.* ${camera.name}`
           })
+          body.type = "chat"
           saveReply(body)
           await globalClient
             .sendText(body.user, body.text)
@@ -282,6 +319,7 @@ const onMessage = async (message) => {
         default:
           if (isNaN(parseInt(body.text))) {
             body.text = botjson.noMatch
+            body.type = "chat"
             saveReply(body)
             await globalClient
               .sendText(body.user, body.text)
@@ -309,11 +347,13 @@ const onMessage = async (message) => {
               .sendImage(body.user, img, camera.id + ".png", camera.name)
               .then(async () => {
                 body.text = "live-" + camera.name
+                body.type = "image"
                 saveReply(body)
                 await globalClient.simulateTyping(body.user, false)
               })
               .catch(async (error) => {
                 body.text = "live-error-" + camera.name
+                body.type = "chat"
                 saveReply(body)
                 await globalClient
                   .sendText(body.user, camera.name + ": " + error.message)
@@ -354,6 +394,7 @@ module.exports = {
       user: params.user,
       groupName: params.groupName,
       isGroupMsg: params.groupName ? true : false,
+      type: "chat",
     }
     saveSentMessage(body)
   },

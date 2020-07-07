@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       message_body: DataTypes.TEXT,
       parent_message_id: DataTypes.INTEGER,
       creator_id: DataTypes.INTEGER,
+      type: DataTypes.STRING,
     },
     {
       underscored: true,

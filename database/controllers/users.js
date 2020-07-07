@@ -15,7 +15,17 @@ module.exports = {
             email: params.email,
           },
         })
-        .then(([user, created]) => resolve(user))
+        .then(([user, created]) => resolve([user, created]))
+        .catch((error) => reject(error))
+    })
+  },
+  update(params) {
+    return new Promise((resolve, reject) => {
+      models.users
+        .update(params, {
+          where: { user_chat_id: params.user_chat_id },
+        })
+        .then(([user, created]) => resolve([user, created]))
         .catch((error) => reject(error))
     })
   },
@@ -47,6 +57,7 @@ module.exports = {
           id: {
             [Op.not]: 2,
           },
+          authenticated: true,
         },
       })
       return results
