@@ -33,6 +33,7 @@
     "rimraf": "^3.0.2",
     "sequelize": "^5.21.11",
     "sequelize-cli": "^5.5.1",
+    "socket.io": "^2.3.0",
     "vue-axios": "^2.1.5",
     "winston": "^3.2.1",
     "woke-dyno": "^0.0.4"

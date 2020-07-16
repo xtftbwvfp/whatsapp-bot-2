@@ -6,7 +6,10 @@ const wakeDyno = require("woke-dyno")
 var AWS = require("aws-sdk")
 
 const server = require("./server")
+var http = require("http").createServer(server)
+const io = require("socket.io").listen(http)
 const bot = require("./bot/index.js")
+const socketEvents = require("./server/socketEvents")
 
 const PORT = process.env.PORT || 8080
 let globalClient
@@ -52,8 +55,14 @@ s3.getObject(
   }
 )
 
-server.listen(PORT, () => {
-  wakeDyno(process.env.DYNO_URL).start()
+server.listen(PORT, (err) => {
+  if (err) {
+    console.log("Cannot run!")
+  } else {
+    global.io = io
+    socketEvents(io)
+    wakeDyno(process.env.DYNO_URL).start()
+  }
 })
 
 ON_DEATH(async function (signal, err) {

@@ -13,6 +13,8 @@ module.exports = {
             first_name: params.first_name,
             last_name: params.last_name,
             email: params.email,
+            private_chats: params.private_chat,
+            authenticated: params.authenticated,
           },
         })
         .then(([user, created]) => resolve([user, created]))
@@ -24,8 +26,10 @@ module.exports = {
       models.users
         .update(params, {
           where: { user_chat_id: params.user_chat_id },
+          returning: true,
+          plain: true,
         })
-        .then(([user, created]) => resolve([user, created]))
+        .then((user) => resolve(user[1]))
         .catch((error) => reject(error))
     })
   },
@@ -57,7 +61,7 @@ module.exports = {
           id: {
             [Op.not]: 2,
           },
-          authenticated: true,
+          private_chats: true,
         },
       })
       return results

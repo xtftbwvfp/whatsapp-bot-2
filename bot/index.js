@@ -1,5 +1,7 @@
 const fetch = require("node-fetch")
 const { default: PQueue } = require("p-queue")
+// const io = require("socket.io")
+// const socketEvents = require("../server/socketEvents")
 
 var evercam = require("../utils/evercam")
 const whatsappDB = require("../database/controllers")
@@ -29,6 +31,7 @@ const batteryChanged = (battery) => {
 }
 
 const saveMessage = async (params) => {
+  global.io.sockets.emit("message", params)
   let user, group, message
   user = await whatsappDB.users
     .getUserOrCreate({
@@ -41,20 +44,25 @@ const saveMessage = async (params) => {
       authenticated: params.authenticated,
     })
     .then(async ([user, created]) => {
-      if (!created && params.authenticated && !user.authenticated) {
+      if (
+        !created &&
+        (params.authenticated != user.authenticated ||
+          !params.isGroupMsg != user.private_chats)
+      ) {
         return await whatsappDB.users.update({
           user_chat_id: params.user,
           phone_number: params.telephone,
           first_name: params.first_name,
           last_name: params.last_name,
           email: params.email,
-          private_chat: !params.isGroupMsg,
+          private_chats: !params.isGroupMsg,
           authenticated: params.authenticated,
         })
       } else {
         return user
       }
     })
+
   message = await whatsappDB.messages.create({
     message_body: params.text,
     parent_message_id: params.parent_message,
