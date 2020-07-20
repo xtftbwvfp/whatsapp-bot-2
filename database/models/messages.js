@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => {
       parent_message_id: DataTypes.INTEGER,
       creator_id: DataTypes.INTEGER,
       type: DataTypes.STRING,
+      flow: DataTypes.INTEGER,
     },
     {
       underscored: true,
