@@ -1,7 +1,7 @@
 const fetch = require("node-fetch")
 const { default: PQueue } = require("p-queue")
-
-var evercam = require("../utils/evercam")
+const dateFormat = require('date-fns/format')
+const evercam = require("../utils/evercam")
 const whatsappDB = require("../database/controllers")
 
 let globalClient
@@ -294,7 +294,7 @@ const onMessage = async (message) => {
             singleCameraFlow(true, credentials, body, globalClient)
             break
           } else {
-            sendGateReport(body, globalClient)
+            sendGateReport(credentials, body, globalClient)
             break
           }
         case 5:
@@ -470,15 +470,47 @@ const sendSingleLiveView = async (credentials, body, globalClient) => {
     })
 }
 
-const sendGateReport = async (body, globalClient) => {
-  // TODO: Implement "send gate report"
-  body.text = "send gate report for selected camera"
-  body.type = "chat"
-  body.flow = 0
-  saveReply(body)
-  await globalClient
-    .sendText(body.user, body.text)
-    .then(async () => await globalClient.simulateTyping(body.user, false))
+const sendGateReport = async (credentials, body, globalClient) => {
+  await globalClient.simulateTyping(body.user, false)
+
+  cameras = await evercam.camerasList(credentials)
+  var camera = cameras.cameras[parseInt(body.text) - 1]
+
+  try {
+    let lastDate = await evercam.getLastGateReportDate(credentials, camera.id)
+    let lastEvent = await evercam.getGateReportDetection(credentials, camera.id, lastDate)
+
+    let arrived = await evercam.getArrivedThumbnail(credentials, lastEvent)
+    let left = await evercam.getLeftThumbnail(credentials, lastEvent)
+
+    let arrivedAt = new Date(lastEvent.arrived_time)
+    let leftAt  = new Date(lastEvent.left_time)
+
+    // Spotted at
+    body.text = `A ${lastEvent.truck_type} spotted at ${dateFormat(arrivedAt, "yyyy/MM/dd")}`
+    body.type = "chat"
+    body.flow = 0
+    saveReply(body)
+    await globalClient
+      .sendText(body.user, body.text)
+      .then(
+        async () => await globalClient.simulateTyping(body.user, false)
+      )
+
+    // Thumpnails
+    await globalClient.sendImage(body.user, arrived, camera.id + ".jpg", `Arrived at ${dateFormat(arrivedAt, "k:m:s")}`)
+    await globalClient.sendImage(body.user, left, camera.id + ".jpg", `Left at ${dateFormat(leftAt, "k:m:s")}`)
+  } catch(e) {
+    body.text = `Sorry, no gate report available for the ${camera.name} camera`
+    body.type = "chat"
+    body.flow = 0
+    saveReply(body)
+    await globalClient
+      .sendText(body.user, body.text)
+      .then(
+        async () => await globalClient.simulateTyping(body.user, false)
+      )
+  }
 }
 
 const sendProcoreImage = async (body, globalClient) => {
