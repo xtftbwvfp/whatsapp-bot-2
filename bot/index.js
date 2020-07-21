@@ -498,8 +498,8 @@ const sendGateReport = async (credentials, body, globalClient) => {
       )
 
     // Thumpnails
-    await globalClient.sendImage(body.user, arrived, camera.id + ".jpg", `Arrived at ${dateFormat(arrivedAt, "k:m:s")}`)
-    await globalClient.sendImage(body.user, left, camera.id + ".jpg", `Left at ${dateFormat(leftAt, "k:m:s")}`)
+    await globalClient.sendImage(body.user, arrived, camera.id + ".jpg", `Arrived at ${dateFormat(arrivedAt, "kk:mm:ss")}`)
+    await globalClient.sendImage(body.user, left, camera.id + ".jpg", `Left at ${dateFormat(leftAt, "kk:mm:ss")}`)
   } catch(e) {
     body.text = `Sorry, no gate report available for the ${camera.name} camera`
     body.type = "chat"
