@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@open-wa/wa-automate": "^1.9.67",
+    "@procore/js-sdk": "^2.3.1",
     "aws-sdk": "^2.701.0",
     "axios": "^0.19.2",
     "cors": "^2.8.5",

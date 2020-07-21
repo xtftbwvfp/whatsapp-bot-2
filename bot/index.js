@@ -3,10 +3,10 @@ const { default: PQueue } = require("p-queue")
 
 var evercam = require("../utils/evercam")
 const whatsappDB = require("../database/controllers")
-var utils = require("../utils")
 
 let globalClient
-let botjson = {}
+const EVERCAM_URL = process.env.EVERCAM_URL
+const PHONE_NUMBER = process.env.PHONE_NUMBER
 
 const queue = new PQueue({
   concurrency: 4,
@@ -105,6 +105,7 @@ const saveReply = async (params) => {
     parent_message_id: params.parent_message,
     creator: 2,
     type: params.type,
+    flow: params.flow,
   })
   if (params.isGroupMsg == true) {
     group = await whatsappDB.groups.getGroupOrCreate({
@@ -190,7 +191,6 @@ const saveSentMessage = async (params) => {
 
 const onMessage = async (message) => {
   try {
-    let cameras = {}
     let body = {}
     let credentials = null
     body.text = message.body
@@ -206,13 +206,11 @@ const onMessage = async (message) => {
     globalClient.sendSeen(body.user)
     await globalClient.simulateTyping(body.user, true)
 
-    if (body.isGroupMsg == true && botjson.appconfig.isGroupReply == false) {
+    if (body.isGroupMsg == true) {
       body.groupName = message.chat.formattedTitle
-      var PartialMatch = body.text
-        .toLowerCase()
-        .search(`@${botjson.phone_number}`)
+      var PartialMatch = body.text.toLowerCase().search(`@${PHONE_NUMBER}`)
       if (PartialMatch >= 0) {
-        body.text = message.body.replace(`@${botjson.phone_number}`, " ").trim()
+        body.text = message.body.replace(`@${PHONE_NUMBER}`, " ").trim()
         credentials = await evercam.getCredentials(body.telephone)
       } else {
         body.groupReply = false
@@ -233,142 +231,265 @@ const onMessage = async (message) => {
       await globalClient.simulateTyping(body.user, false)
       return
     } else if (!credentials) {
-      response = botjson.unAuthorized
-      body.type = "chat"
-      saveReply(body)
-      await globalClient
-        .sendText(body.user, response)
-        .then(async () => await globalClient.simulateTyping(body.user, false))
+      sendUnauthorized(body, globalClient)
     } else {
-      var exactMatch = botjson.bot.find((obj) =>
-        obj.exact.find((ex) => ex == body.text.toLowerCase())
-      )
-      PartialMatch = botjson.bot.find((obj) =>
-        obj.contains.find((ex) => body.text.toLowerCase().search(ex) > -1)
-      )
-      var response = ""
-      if (exactMatch != undefined) {
-        body.text = exactMatch.response
-        body.type = "chat"
-        saveReply(body)
-        await globalClient
-          .sendText(body.user, body.text)
-          .then(async () => await globalClient.simulateTyping(body.user, false))
-        return
-      }
-      if (PartialMatch != undefined) {
-        body.text = PartialMatch.response
-        body.type = "chat"
-        saveReply(body)
-        await globalClient
-          .sendText(body.user, body.text)
-          .then(async () => await globalClient.simulateTyping(body.user, false))
-        return
-      }
       switch (body.text.toLowerCase()) {
+        case "hi":
+        case "hello":
+        case "menu":
+        case "exit":
+          firstMessageFlow(body, globalClient)
+          return
         case "live":
-        case "a":
-          cameras = await evercam.camerasList(credentials)
-          cameras.cameras.forEach(async (camera) => {
-            let url = camera.is_online
-              ? botjson.evercam_url + "/cameras/" + camera.id + "/live/snapshot"
-              : camera.thumbnail_url
-            url =
-              url +
-              "?api_id=" +
-              credentials.api_id +
-              "&api_key=" +
-              credentials.api_key
-            let img = await fetch(url)
-              .then((r) => r.buffer())
-              .then((buf) => {
-                return "data:image/png;base64," + buf.toString("base64")
-              })
-            await globalClient
-              .sendImage(body.user, img, camera.id + ".png", camera.name)
-              .then(() => {
-                body.text = "live-" + camera.name
-                body.type = "image"
-                saveReply(body)
-              })
-              .catch((error) => {
-                body.text = "live-error-" + camera.name
-                saveReply(body)
-                globalClient.sendText(
-                  body.user,
-                  camera.name + ": " + error.message
-                )
-              })
-          })
-          await globalClient.simulateTyping(body.user, false)
-          break
-        case "b":
-          cameras = await evercam.camerasList(credentials)
-          body.text = "Select a camera by replying the associated number:\n"
-          cameras.cameras.forEach((camera, index) => {
-            body.text += `\n *${index + 1}.* ${camera.name}`
-          })
-          body.type = "chat"
-          saveReply(body)
-          await globalClient
-            .sendText(body.user, body.text)
-            .then(
-              async () => await globalClient.simulateTyping(body.user, false)
-            )
-          break
+        case "live view":
+          sendAllLiveView(credentials, body, globalClient)
+          return
         default:
-          if (isNaN(parseInt(body.text))) {
-            body.text = botjson.noMatch
-            body.type = "chat"
-            saveReply(body)
-            await globalClient
-              .sendText(body.user, body.text)
-              .then(
-                async () => await globalClient.simulateTyping(body.user, false)
-              )
+          break
+      }
+      let user_id = dbResponse.user ? dbResponse.user.id : null
+      let group_id = dbResponse.group ? dbResponse.group.id : null
+      let flow = await whatsappDB.messages.getFlow(user_id, group_id)
+      switch (flow[0].flow) {
+        case 1:
+          if (body.text.toLowerCase() == "a") {
+            evercamFlow(body, globalClient)
+            break
+          } else if (body.text.toLowerCase() == "b") {
+            procoreAlbumsFlow(body, globalClient)
+            break
           } else {
-            cameras = await evercam.camerasList(credentials)
-            var camera = cameras.cameras[parseInt(body.text) - 1]
-            let url = camera.is_online
-              ? botjson.evercam_url + "/cameras/" + camera.id + "/live/snapshot"
-              : camera.thumbnail_url
-            url =
-              url +
-              "?api_id=" +
-              credentials.api_id +
-              "&api_key=" +
-              credentials.api_key
-            let img = await fetch(url)
-              .then((r) => r.buffer())
-              .then((buf) => {
-                return "data:image/png;base64," + buf.toString("base64")
-              })
-            await globalClient
-              .sendImage(body.user, img, camera.id + ".png", camera.name)
-              .then(async () => {
-                body.text = "live-" + camera.name
-                body.type = "image"
-                saveReply(body)
-                await globalClient.simulateTyping(body.user, false)
-              })
-              .catch(async (error) => {
-                body.text = "live-error-" + camera.name
-                body.type = "chat"
-                saveReply(body)
-                await globalClient
-                  .sendText(body.user, camera.name + ": " + error.message)
-                  .then(
-                    async () =>
-                      await globalClient.simulateTyping(body.user, false)
-                  )
-              })
+            firstMessageFlow(body, globalClient)
+            break
           }
+        case 2:
+          if (body.text.toLowerCase() == "a") {
+            // Send all images live view
+            sendAllLiveView(credentials, body, globalClient)
+            break
+          } else if (body.text.toLowerCase() == "b") {
+            // Send select camera option for live view
+            singleCameraFlow(false, credentials, body, globalClient)
+            break
+          } else if (body.text.toLowerCase() == "c") {
+            // Send select camera option for gate report
+            singleCameraFlow(true, credentials, body, globalClient)
+            break
+          } else {
+            // Option on found, send evercam options
+            evercamFlow(body, globalClient)
+            break
+          }
+        case 3:
+          // Single camera live view flow
+          if (isNaN(parseInt(body.text))) {
+            singleCameraFlow(false, credentials, body, globalClient)
+            break
+          } else {
+            sendSingleLiveView(credentials, body, globalClient)
+            break
+          }
+        case 4:
+          if (isNaN(parseInt(body.text))) {
+            singleCameraFlow(true, credentials, body, globalClient)
+            break
+          } else {
+            sendGateReport(body, globalClient)
+            break
+          }
+        case 5:
+          if (isNaN(parseInt(body.text))) {
+            procoreAlbumsFlow(body, globalClient)
+            break
+          } else {
+            procoreImagesFlow(body, globalClient)
+            break
+          }
+        case 6:
+          if (isNaN(parseInt(body.text))) {
+            procoreImagesFlow(body, globalClient)
+            break
+          } else {
+            sendProcoreImage(body, globalClient)
+            break
+          }
+        default:
+          firstMessageFlow(body, globalClient)
           break
       }
     }
   } catch (error) {
     console.log("TCL: start -> error", error)
   }
+}
+
+const sendUnauthorized = async (body, globalClient) => {
+  body.text =
+    "Sorry, you are not registered in our system. Please go to https://evercam.io or contact Vinnie (vinnie@evercam.io) to start enjoyng Evercam."
+  body.type = "chat"
+  body.flow = 0
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const firstMessageFlow = async (body, globalClient) => {
+  body.text =
+    "*Hi " +
+    body.first_name +
+    "! Welcome to Evercam WhatsApp bot*\n\nReply with a letter to get the latest information from your account:\n\n  *A)* Evercam\n  *B)* Procore"
+  body.type = "chat"
+  body.flow = 1
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const evercamFlow = async (body, globalClient) => {
+  let title = "*Evercam Menu*\n\n"
+  body.text =
+    title +
+    "Reply with a letter to get the latest information from your account:\n\n  *A)* All cameras Live View\n  *B)* Selected camera Live view\n  *C)* Selected camera Gate Report"
+  body.type = "chat"
+  body.flow = 2
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const singleCameraFlow = async (
+  gate_report,
+  credentials,
+  body,
+  globalClient
+) => {
+  const cameras = await evercam.camerasList(credentials)
+  const title = gate_report ? "*Gate Report*\n\n" : "*Live View*\n\n"
+  body.text =
+    title + "Select a camera by replying with the associated number:\n"
+
+  cameras.cameras.forEach((camera, index) => {
+    body.text += `\n *${index + 1}.* ${camera.name}`
+  })
+  body.type = "chat"
+  body.flow = gate_report ? 4 : 3
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const procoreAlbumsFlow = async (body, globalClient) => {
+  // TODO: Implement send procore albums
+  const title = "*Procore Album Selection*\n\n"
+  body.text = title + "(Reply with a number associated to the album)"
+  body.type = "chat"
+  body.flow = 5
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const procoreImagesFlow = async (body, globalClient) => {
+  // TODO: Send procore images in an album
+  const title = "*Procore Image Selection*\n\n"
+  body.text = title + "(Reply with a number associated to the image)"
+  body.type = "chat"
+  body.flow = 6
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const sendAllLiveView = async (credentials, body, globalClient) => {
+  const cameras = await evercam.camerasList(credentials)
+  cameras.cameras.forEach(async (camera) => {
+    let url = camera.is_online
+      ? EVERCAM_URL + "/cameras/" + camera.id + "/live/snapshot"
+      : camera.thumbnail_url
+    url =
+      url + "?api_id=" + credentials.api_id + "&api_key=" + credentials.api_key
+    let img = await fetch(url)
+      .then((r) => r.buffer())
+      .then((buf) => {
+        return "data:image/png;base64," + buf.toString("base64")
+      })
+    await globalClient
+      .sendImage(body.user, img, camera.id + ".png", camera.name)
+      .then(() => {
+        body.text = "live-" + camera.name
+        body.type = "image"
+        body.flow = 0
+        saveReply(body)
+      })
+      .catch((error) => {
+        body.text = "live-error-" + camera.name
+        body.flow = 0
+        saveReply(body)
+        globalClient.sendText(body.user, camera.name + ": " + error.message)
+      })
+  })
+  await globalClient.simulateTyping(body.user, false)
+}
+
+const sendSingleLiveView = async (credentials, body, globalClient) => {
+  const cameras = await evercam.camerasList(credentials)
+  var camera = cameras.cameras[parseInt(body.text) - 1]
+  let url = camera.is_online
+    ? EVERCAM_URL + "/cameras/" + camera.id + "/live/snapshot"
+    : camera.thumbnail_url
+  url =
+    url + "?api_id=" + credentials.api_id + "&api_key=" + credentials.api_key
+  let img = await fetch(url)
+    .then((r) => r.buffer())
+    .then((buf) => {
+      return "data:image/png;base64," + buf.toString("base64")
+    })
+  await globalClient
+    .sendImage(body.user, img, camera.id + ".png", camera.name)
+    .then(async () => {
+      body.text = "live-" + camera.name
+      body.type = "image"
+      body.flow = 0
+      saveReply(body)
+      await globalClient.simulateTyping(body.user, false)
+    })
+    .catch(async (error) => {
+      body.text = "live-error-" + camera.name
+      body.type = "chat"
+      body.flow = 0
+      saveReply(body)
+      await globalClient
+        .sendText(body.user, camera.name + ": " + error.message)
+        .then(async () => await globalClient.simulateTyping(body.user, false))
+    })
+}
+
+const sendGateReport = async (body, globalClient) => {
+  // TODO: Implement "send gate report"
+  body.text = "send gate report for selected camera"
+  body.type = "chat"
+  body.flow = 0
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
+}
+
+const sendProcoreImage = async (body, globalClient) => {
+  // TODO: Implement "send procore image"
+  body.text = "send procore image"
+  body.type = "chat"
+  body.flow = 0
+  saveReply(body)
+  await globalClient
+    .sendText(body.user, body.text)
+    .then(async () => await globalClient.simulateTyping(body.user, false))
 }
 
 module.exports = {
@@ -380,10 +501,6 @@ module.exports = {
     client.onAnyMessage(anyMessage)
     client.onMessage(processMessage)
     client.onBattery(batteryChanged)
-    botjson = await utils.externalInjection("bot.json")
-    botjson["evercam_url"] = process.env.EVERCAM_URL
-    botjson["token"] = process.env.WHATSAPP_TOKEN
-    botjson["phone_number"] = process.env.PHONE_NUMBER
     queue.start()
   },
 
