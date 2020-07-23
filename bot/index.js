@@ -384,10 +384,20 @@ const singleCameraFlow = async (
 
 const procoreAlbumsFlow = async (body, globalClient) => {
   // TODO: Implement send procore albums
-  const title = "*Procore Album Selection*\n\n"
-  body.text = title + "(Reply with a number associated to the album)"
+  let text = "Hi, Your procore daily logs 📑\n\n"
+
+  text += "👷 *Manpower*\n"
+  text += "\t 3 Workers | 24 Total Hours"
+  text +="\n\n"
+
+  text += "📃 *Notes*\n"
+  text += "\t - Evercam Office (IE)>00 | Progress going well, all facade panels installed."
+  text += "\t - Evercam Office (IE)>00 | Crack in facade EV002."
+  text += "\n\n"
+
+  body.text = text
   body.type = "chat"
-  body.flow = 5
+  body.flow = 0
   saveReply(body)
   await globalClient
     .sendText(body.user, body.text)
