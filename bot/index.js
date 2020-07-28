@@ -1,6 +1,6 @@
 const fetch = require("node-fetch")
 const { default: PQueue } = require("p-queue")
-const dateFormat = require('date-fns/format')
+const dateFormat = require("date-fns/format")
 const evercam = require("../utils/evercam")
 const whatsappDB = require("../database/controllers")
 
@@ -238,7 +238,8 @@ const onMessage = async (message) => {
         case "hello":
         case "menu":
         case "exit":
-          firstMessageFlow(body, globalClient)
+          evercamFlow(body, globalClient)
+          // firstMessageFlow(body, globalClient)
           return
         case "live":
         case "live view":
@@ -250,6 +251,10 @@ const onMessage = async (message) => {
       let user_id = dbResponse.user ? dbResponse.user.id : null
       let group_id = dbResponse.group ? dbResponse.group.id : null
       let flow = await whatsappDB.messages.getFlow(user_id, group_id)
+      if (flow[0].flow == 3 || flow[0].flow == 4) {
+        var { cameras } = await evercam.camerasList(credentials)
+        var bodyNumber = parseInt(body.text)
+      }
       switch (flow[0].flow) {
         case 1:
           if (body.text.toLowerCase() == "a") {
@@ -282,7 +287,11 @@ const onMessage = async (message) => {
           }
         case 3:
           // Single camera live view flow
-          if (isNaN(parseInt(body.text))) {
+          if (
+            isNaN(bodyNumber) ||
+            bodyNumber <= 0 ||
+            bodyNumber > cameras.length
+          ) {
             singleCameraFlow(false, credentials, body, globalClient)
             break
           } else {
@@ -290,7 +299,11 @@ const onMessage = async (message) => {
             break
           }
         case 4:
-          if (isNaN(parseInt(body.text))) {
+          if (
+            isNaN(bodyNumber) ||
+            bodyNumber <= 0 ||
+            bodyNumber > cameras.length
+          ) {
             singleCameraFlow(true, credentials, body, globalClient)
             break
           } else {
@@ -314,7 +327,8 @@ const onMessage = async (message) => {
             break
           }
         default:
-          firstMessageFlow(body, globalClient)
+          evercamFlow(body, globalClient)
+          // firstMessageFlow(body, globalClient)
           break
       }
     }
@@ -348,10 +362,11 @@ const firstMessageFlow = async (body, globalClient) => {
 }
 
 const evercamFlow = async (body, globalClient) => {
-  let title = "*Evercam Menu*\n\n"
+  // let title = "*Evercam Menu*\n\n"
   body.text =
-    title +
-    "Reply with a letter to get the latest information from your account:\n\n  *A)* All cameras Live View\n  *B)* Selected camera Live view\n  *C)* Selected camera Gate Report"
+    "*Hi " +
+    body.first_name +
+    "! Welcome to Evercam WhatsApp bot*\n\nReply with a letter to get the latest information from your account:\n\n  *A)* All cameras Live View\n  *B)* Specific camera Live view\n  *C)* Gate Report"
   body.type = "chat"
   body.flow = 2
   saveReply(body)
@@ -366,12 +381,12 @@ const singleCameraFlow = async (
   body,
   globalClient
 ) => {
-  const cameras = await evercam.camerasList(credentials)
+  var { cameras } = await evercam.camerasList(credentials)
   const title = gate_report ? "*Gate Report*\n\n" : "*Live View*\n\n"
   body.text =
     title + "Select a camera by replying with the associated number:\n"
 
-  cameras.cameras.forEach((camera, index) => {
+  cameras.forEach((camera, index) => {
     body.text += `\n *${index + 1}.* ${camera.name}`
   })
   body.type = "chat"
@@ -388,10 +403,11 @@ const procoreAlbumsFlow = async (body, globalClient) => {
 
   text += "👷 *Manpower*\n"
   text += "\t 3 Workers | 24 Total Hours"
-  text +="\n\n"
+  text += "\n\n"
 
   text += "📃 *Notes*\n"
-  text += "\t - Evercam Office (IE)>00 | Progress going well, all facade panels installed."
+  text +=
+    "\t - Evercam Office (IE)>00 | Progress going well, all facade panels installed."
   text += "\t - Evercam Office (IE)>00 | Crack in facade EV002."
   text += "\n\n"
 
@@ -483,43 +499,56 @@ const sendSingleLiveView = async (credentials, body, globalClient) => {
 const sendGateReport = async (credentials, body, globalClient) => {
   await globalClient.simulateTyping(body.user, false)
 
-  cameras = await evercam.camerasList(credentials)
+  var cameras = await evercam.camerasList(credentials)
   var camera = cameras.cameras[parseInt(body.text) - 1]
 
   try {
     let lastDate = await evercam.getLastGateReportDate(credentials, camera.id)
-    let lastEvent = await evercam.getGateReportDetection(credentials, camera.id, lastDate)
+    let lastEvent = await evercam.getGateReportDetection(
+      credentials,
+      camera.id,
+      lastDate
+    )
 
     let arrived = await evercam.getArrivedThumbnail(credentials, lastEvent)
     let left = await evercam.getLeftThumbnail(credentials, lastEvent)
 
     let arrivedAt = new Date(lastEvent.arrived_time)
-    let leftAt  = new Date(lastEvent.left_time)
+    let leftAt = new Date(lastEvent.left_time)
 
     // Spotted at
-    body.text = `A ${lastEvent.truck_type} spotted at ${dateFormat(arrivedAt, "yyyy/MM/dd")}`
+    body.text = `A ${lastEvent.truck_type} spotted at ${dateFormat(
+      arrivedAt,
+      "yyyy/MM/dd"
+    )}`
     body.type = "chat"
     body.flow = 0
     saveReply(body)
     await globalClient
       .sendText(body.user, body.text)
-      .then(
-        async () => await globalClient.simulateTyping(body.user, false)
-      )
+      .then(async () => await globalClient.simulateTyping(body.user, false))
 
     // Thumpnails
-    await globalClient.sendImage(body.user, arrived, camera.id + ".jpg", `Arrived at ${dateFormat(arrivedAt, "kk:mm:ss")}`)
-    await globalClient.sendImage(body.user, left, camera.id + ".jpg", `Left at ${dateFormat(leftAt, "kk:mm:ss")}`)
-  } catch(e) {
+    await globalClient.sendImage(
+      body.user,
+      arrived,
+      camera.id + ".jpg",
+      `Arrived at ${dateFormat(arrivedAt, "kk:mm:ss")}`
+    )
+    await globalClient.sendImage(
+      body.user,
+      left,
+      camera.id + ".jpg",
+      `Left at ${dateFormat(leftAt, "kk:mm:ss")}`
+    )
+  } catch (e) {
     body.text = `Sorry, no gate report available for the ${camera.name} camera`
     body.type = "chat"
     body.flow = 0
     saveReply(body)
     await globalClient
       .sendText(body.user, body.text)
-      .then(
-        async () => await globalClient.simulateTyping(body.user, false)
-      )
+      .then(async () => await globalClient.simulateTyping(body.user, false))
   }
 }
 
